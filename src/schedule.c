@@ -11,7 +11,10 @@ struct dag_node
 {
     /* data */
     int is_exit;
-    int latency;
+    int delay_cycle;
+    int sched_cycle;
+    int may_load;
+    int may_store;
     ph2_ir_t* ir;
     struct dag_node* child[64];
     int child_size;
@@ -24,6 +27,31 @@ typedef struct dag_node dag_node_t;
 int ir_nums;
 dag_node_t dag_node_arr[64];
 
+dag_node_t* def[REG_CNT];
+
+int may_load(opcode_t op) {
+    return  op == OP_load           || 
+            op == OP_global_load    || 
+            op == OP_read           || 
+            op == OP_return;
+}
+
+int may_store(opcode_t op) {
+    return  op == OP_define         || 
+            op == OP_store          || 
+            op == OP_global_store   || 
+            op == OP_write          || 
+            op == OP_address_of_func;
+}
+
+int may_jmp(opcode_t op) {
+    return  op == OP_branch     || 
+            op == OP_jump       || 
+            op == OP_call       ||
+            op == OP_indirect   ||
+            op == OP_return;
+}
+
 void init_dag_nodes(basic_block_t *bb) {
 
     int i = 0;
@@ -33,14 +61,17 @@ void init_dag_nodes(basic_block_t *bb) {
 
         dag_node_arr[i].ir = ph2_ir;
 
-        
+        // init delay
 
-        if (ph2_ir->op == OP_branch     || 
-            ph2_ir->op == OP_jump       || 
-            ph2_ir->op == OP_call       ||
-            ph2_ir->op == OP_indirect   ||
-            ph2_ir->op == OP_return) 
-        {
+        if (may_load(ph2_ir->op)) {
+            dag_node_arr[i].may_load = 1;
+        }
+
+        if (may_store(ph2_ir->op)) {
+            dag_node_arr[i].may_store = 1;
+        }
+
+        if (may_jmp(ph2_ir->op)) {
             dag_node_arr[i].is_exit = 1;
         }
     }
@@ -64,15 +95,22 @@ int check_alias(ph2_ir_t *fisrt, ph2_ir_t *second) {
 }
 
 void construct_dependency() {
-    for(int i=0 ; i < ir_nums ; i++) {
-        for(int j = i + 1 ; j < ir_nums ; j++) {
-            dag_node_t* node1 = &dag_node_arr[i];
-            dag_node_t* node2 = &dag_node_arr[j];
-            if (check_register(node1->ir, node2->ir)) {
-                node1->child[node1->child_size++] = node2;
-                node2->parent[node1->parent_size++] = node1;
-            }
-        }
+    // for(int i=0 ; i < ir_nums ; i++) {
+    //     int find_use = 0;
+    //     int find_def = 0;
+
+    //     for(int j = i + 1 ; j < ir_nums ; j++) {
+    //         dag_node_t* node1 = &dag_node_arr[i];
+    //         dag_node_t* node2 = &dag_node_arr[j];
+    //         if (check_register(node1->ir, node2->ir)) {
+    //             node1->child[node1->child_size++] = node2;
+    //             node2->parent[node1->parent_size++] = node1;
+    //         }
+    //     }
+    // }
+
+    for(int i = ir_nums - 1 ; i >= 0; i--) {
+        
     }
 }
 
