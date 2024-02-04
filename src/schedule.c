@@ -52,7 +52,29 @@ int may_jmp(opcode_t op) {
             op == OP_return;
 }
 
-void init_dag_nodes(basic_block_t *bb) {
+int check_register(ph2_ir_t *fisrt, ph2_ir_t *second) {
+    if (fisrt->dest == second->src0 || /* data dependency */ 
+        fisrt->dest == second->src1 || /* data dependency */ 
+        fisrt->dest == second->dest || /* output dependency */ 
+        fisrt->src0 == second->dest || /* anti dependency */ 
+        fisrt->src1 == second->dest    /* anti dependency */)
+        return 1;
+
+    return 0;
+}
+
+void add_dependency(dag_node_t* node1, dag_node_t* node2) {
+
+    node1->child[node1->child_size++] = node2;
+    node2->parent[node1->parent_size++] = node1;
+
+    return ;
+}
+
+
+void build_sched_grpah(basic_block_t *bb) {
+
+    /* Initialize Dag nodes */
 
     int i = 0;
     ph2_ir_t* ph2_ir;
@@ -61,7 +83,7 @@ void init_dag_nodes(basic_block_t *bb) {
 
         dag_node_arr[i].ir = ph2_ir;
 
-        // init delay
+        /*TODO: add letency*/
 
         if (may_load(ph2_ir->op)) {
             dag_node_arr[i].may_load = 1;
@@ -77,49 +99,44 @@ void init_dag_nodes(basic_block_t *bb) {
     }
 
     ir_nums = i;
-}
 
-int check_register(ph2_ir_t *fisrt, ph2_ir_t *second) {
-    if (fisrt->dest == second->src0 || /* data dependency */ 
-        fisrt->dest == second->src1 || /* data dependency */ 
-        fisrt->dest == second->dest || /* output dependency */ 
-        fisrt->src0 == second->dest || /* anti dependency */ 
-        fisrt->src1 == second->dest    /* anti dependency */)
-        return 1;
+    /* Build Dag Dependency*/
 
-    return 0;
-}
+    for(int i=0 ; i < ir_nums ; i++) {
+        int find_use = 0;
+        int find_def = 0;
 
-int check_alias(ph2_ir_t *fisrt, ph2_ir_t *second) {
-    if (fisrt->op != OP_load)
-}
-
-void construct_dependency() {
-    // for(int i=0 ; i < ir_nums ; i++) {
-    //     int find_use = 0;
-    //     int find_def = 0;
-
-    //     for(int j = i + 1 ; j < ir_nums ; j++) {
-    //         dag_node_t* node1 = &dag_node_arr[i];
-    //         dag_node_t* node2 = &dag_node_arr[j];
-    //         if (check_register(node1->ir, node2->ir)) {
-    //             node1->child[node1->child_size++] = node2;
-    //             node2->parent[node1->parent_size++] = node1;
-    //         }
-    //     }
-    // }
-
-    for(int i = ir_nums - 1 ; i >= 0; i--) {
-        
+        for(int j = i + 1 ; j < ir_nums ; j++) {
+            if (check_register(node1->ir, node2->ir)) {
+                add_dependency(&dag_node_arr[i], &dag_node_arr[j]);
+            }
+        }
     }
-}
 
+    int i = 0, j = 0;
 
+    while(j < ir_nums && dag_node_arr[j]->may_store == 0) {
+        j++;
+    }
 
+    for(; j < ir_nums;) {
 
-void build_sched_grpah(basic_block_t *bb) {
+        while(j < ir_nums && i < j) {
+            if (dag_node_arr[i]->may_load || dag_node_arr[i]->may_store) {
+                add_dependency(&dag_node_arr[i], &dag_node_arr[j]);
+            }
+            i++;
+        }
 
-    init_dag_nodes(bb);
-    construct_dependency();
+        j++;
+
+        while(j < ir_nums && dag_node_arr[j]->may_store == 0) {
+            if (dag_node_arr[j]->may_load) {
+                add_dependency(&dag_node_arr[i], &dag_node_arr[j]);
+            }
+
+            j++;
+        }
+    }
     
 }
