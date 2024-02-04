@@ -16,10 +16,10 @@ struct dag_node
     int may_load;
     int may_store;
     ph2_ir_t* ir;
-    struct dag_node* child[64];
-    int child_size;
-    struct dag_node* parent[64];
-    int parent_size;
+    struct dag_node* succ[64];
+    int succ_size;
+    struct dag_node* pred[64];
+    int pred_size;
 };
 
 typedef struct dag_node dag_node_t;
@@ -65,8 +65,8 @@ int check_register(ph2_ir_t *fisrt, ph2_ir_t *second) {
 
 void add_dependency(dag_node_t* node1, dag_node_t* node2) {
 
-    node1->child[node1->child_size++] = node2;
-    node2->parent[node1->parent_size++] = node1;
+    node1->succ[node1->succ_size++] = node2;
+    node2->pred[node1->pred_size++] = node1;
 
     return ;
 }
