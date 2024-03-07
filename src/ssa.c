@@ -1067,6 +1067,9 @@ int cse(insn_t *insn, basic_block_t *bb)
         return 0;
 
     var_t *def = NULL, *base = prev->rs1, *idx = prev->rs2;
+    if (base->is_global || idx->is_global)
+        return 0;
+
     basic_block_t *b;
     insn_t *i = prev;
     for (b = bb;; b = b->idom) {
@@ -1097,7 +1100,7 @@ int cse(insn_t *insn, basic_block_t *bb)
 
     if (prev->prev) {
         insn->prev = prev->prev;
-        prev->next = insn;
+        prev->prev->next = insn;
     } else {
         bb->insn_list.head = insn;
         insn->prev = NULL;
@@ -1108,9 +1111,89 @@ int cse(insn_t *insn, basic_block_t *bb)
     return 1;
 }
 
+int mark_const(insn_t *insn)
+{
+    if (insn->opcode == OP_load_constant) {
+        insn->rd->is_const = 1;
+        return 0;
+    }
+    if (insn->opcode != OP_assign)
+        return 0;
+    /* The global variable is unique and has no subscripts in our SSA. Do NOT
+     * evaluate its value.
+     */
+    if (insn->rd->is_global)
+        return 0;
+    if (!insn->rs1->is_const) {
+        if (!insn->prev)
+            return 0;
+        if (insn->prev->opcode != OP_load_constant)
+            return 0;
+        if (insn->rs1 != insn->prev->rd)
+            return 0;
+    }
+
+    insn->opcode = OP_load_constant;
+    insn->rd->is_const = 1;
+    insn->rd->init_val = insn->rs1->init_val;
+    insn->rs1 = NULL;
+    return 1;
+}
+
+int eval_const_arithmetic(insn_t *insn)
+{
+    if (!insn->rs1)
+        return 0;
+    if (!insn->rs1->is_const)
+        return 0;
+    if (!insn->rs2)
+        return 0;
+    if (!insn->rs2->is_const)
+        return 0;
+
+    int res;
+    int l = insn->rs1->init_val;
+    int r = insn->rs2->init_val;
+
+    switch (insn->opcode) {
+    case OP_add:
+        res = l + r;
+        break;
+    case OP_sub:
+        res = l - r;
+        break;
+    case OP_mul:
+        res = l * r;
+        break;
+    case OP_div:
+        res = l / r;
+        break;
+    case OP_mod:
+        res = l % r;
+        break;
+    default:
+        return 0;
+    }
+
+    insn->rs1 = NULL;
+    insn->rs2 = NULL;
+    insn->rd->is_const = 1;
+    insn->rd->init_val = res;
+    insn->opcode = OP_load_constant;
+    return 1;
+}
+
+int const_folding(insn_t *insn)
+{
+    if (mark_const(insn))
+        return 1;
+    if (eval_const_arithmetic(insn))
+        return 1;
+    return 0;
+}
+
 void optimize()
 {
-    int changed = 0;
     fn_t *fn;
     for (fn = FUNC_LIST.head; fn; fn = fn->next) {
         /* basic block level (control flow) optimizations */
@@ -1120,7 +1203,10 @@ void optimize()
             /* instruction level optimizations */
             insn_t *insn;
             for (insn = bb->insn_list.head; insn; insn = insn->next) {
-                changed |= cse(insn, bb);
+                if (cse(insn, bb))
+                    continue;
+                if (const_folding(insn))
+                    continue;
                 /* more optimizations */
             }
         }

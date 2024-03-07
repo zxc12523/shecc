@@ -533,4 +533,51 @@ int main()
 }
 EOF
 
+try_ 0 << EOF
+#if 1 || 0
+#define A 0
+#elif 1 && 0
+#define A 1
+#else
+#define A 2
+#endif
+int main()
+{
+    return A;
+}
+EOF
+
+# optimizers
+
+# common subexpression elimination (CSE)
+try_ 1 << EOF
+int i = 0;
+void func()
+{
+    i = 1;
+}
+int main()
+{
+    char arr[2], t;
+    arr[0] = 0;
+    arr[1] = 1;
+    t = arr[i];
+    func();
+    t = arr[i];
+    return t;
+}
+EOF
+
+# constant folding
+try_ 20 << EOF
+int main()
+{
+    int a = 2;            /* constant assingment */
+    int b = a;            /* assignment via constant representation */
+    int c = a + b;
+    int d = c + 8;        /* mixed assigment */
+    return a + b + c + d; /* chained assignment */
+}
+EOF
+
 echo OK
