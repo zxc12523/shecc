@@ -6,6 +6,21 @@
  */
 #include<defs.h>
 
+enum dag_dep_type {
+    DATA = 1, 
+    OUTPUT, 
+    ANTI
+};
+
+struct dag_dep
+{
+    int is_pred;
+    int dep_type;
+    int pred_num;
+    struct dag_node* pred;
+    int succ_num;
+    struct dag_node* succ;
+};
 
 struct dag_node
 {
@@ -16,13 +31,15 @@ struct dag_node
     int may_load;
     int may_store;
     ph2_ir_t* ir;
-    struct dag_node* succ[64];
+    struct dag_dep* succ[64];
     int succ_size;
-    struct dag_node* pred[64];
+    struct dag_dep* pred[64];
     int pred_size;
 };
 
+
 typedef struct dag_node dag_node_t;
+typedef struct dag_dep dag_dep_t;
 
 int ir_nums;
 dag_node_t dag_node_arr[64];
@@ -53,20 +70,38 @@ int may_jmp(opcode_t op) {
 }
 
 int check_register(ph2_ir_t *fisrt, ph2_ir_t *second) {
-    if (fisrt->dest == second->src0 || /* data dependency */ 
-        fisrt->dest == second->src1 || /* data dependency */ 
-        fisrt->dest == second->dest || /* output dependency */ 
-        fisrt->src0 == second->dest || /* anti dependency */ 
-        fisrt->src1 == second->dest    /* anti dependency */)
-        return 1;
+
+    /* data dependency */ 
+    if (fisrt->dest == second->src0 ||  fisrt->dest == second->src1)
+        return DATA;
+
+    /* output dependency */ 
+    if (fisrt->dest == second->dest) {
+        return OUTPUT;
+    } 
+
+    /* anti dependency */
+    if (fisrt->src0 == second->dest || fisrt->src1 == second->dest    )
+        return ANTI;
 
     return 0;
 }
 
-void add_dependency(dag_node_t* node1, dag_node_t* node2) {
+void add_dependency(dag_node_t* node1, dag_node_t* node2, int dep_type) {
 
-    node1->succ[node1->succ_size++] = node2;
-    node2->pred[node1->pred_size++] = node1;
+    dag_dep_t* succ_dep = node1->succ[node1->succ_size] = malloc(sizeof(dep_type));
+    dag_dep_t* pred_dep = node2->pred[node2->pred_size] = malloc(sizeof(dep_type));
+
+    succ_dep->dep_type = dep_type;
+    succ_dep->is_pred = 0;
+    succ_dep->succ_num = node2->pred_size++;
+    succ_dep->succ = node2;
+
+
+    pred_dep->dep_type = dep_type;
+    pred_dep->is_pred = 1;
+    pred_dep->pred_num = node1->succ_size++;
+    pred_dep->pred = node1;
 
     return ;
 }
@@ -103,40 +138,46 @@ void build_sched_grpah(basic_block_t *bb) {
     /* Build Dag Dependency*/
 
     for(int i=0 ; i < ir_nums ; i++) {
-        int find_use = 0;
-        int find_def = 0;
-
         for(int j = i + 1 ; j < ir_nums ; j++) {
-            if (check_register(node1->ir, node2->ir)) {
-                add_dependency(&dag_node_arr[i], &dag_node_arr[j]);
+
+            int dep_type;
+            dag_node_t* node1 = &dag_node_arr[i];
+            dag_node_t* node2 = &dag_node_arr[j];
+
+            if (dep_type = check_register(node1->ir, node2->ir)) {
+                add_dependency(&dag_node_arr[i], &dag_node_arr[j], dep_type);
             }
         }
     }
 
+    /* may change in future after adding alias analysis*/
+
     int i = 0, j = 0;
 
-    while(j < ir_nums && dag_node_arr[j]->may_store == 0) {
+    while(j < ir_nums && dag_node_arr[j].may_store == 0) {
         j++;
     }
 
     for(; j < ir_nums;) {
 
         while(j < ir_nums && i < j) {
-            if (dag_node_arr[i]->may_load || dag_node_arr[i]->may_store) {
-                add_dependency(&dag_node_arr[i], &dag_node_arr[j]);
+            if (dag_node_arr[i].may_load || dag_node_arr[i].may_store) {
+                add_dependency(&dag_node_arr[i], &dag_node_arr[j], );
             }
             i++;
         }
 
         j++;
 
-        while(j < ir_nums && dag_node_arr[j]->may_store == 0) {
-            if (dag_node_arr[j]->may_load) {
+        while(j < ir_nums && dag_node_arr[j].may_store == 0) {
+            if (dag_node_arr[j].may_load) {
                 add_dependency(&dag_node_arr[i], &dag_node_arr[j]);
             }
 
             j++;
         }
     }
+
+    
     
 }
